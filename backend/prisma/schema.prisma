@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  secretary
+  instructor
+}
+
+enum Currency {
+  USD
+  LOCAL
+}
+
+enum PaymentMethod {
+  cash_usd
+  cash_local
+  transfer_usd
+  transfer_local
+}
+
+enum PaymentType {
+  monthly_fee
+  league_fee
+  game_arbitrage
+}
+
+enum GameType {
+  friendly
+  league
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  role         UserRole
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  payments           Payment[]
+  expenses           Expense[]
+  instructorPayments InstructorPayment[] @relation("InstructorPayments")
+  recordedPayments   InstructorPayment[] @relation("RecordedByUser")
+  gameAttendances    GameAttendance[]
+}
+
+model Category {
+  id       String    @id @default(cuid())
+  name     String
+  minAge   Int
+  maxAge   Int
+  students Student[]
+  leagues  League[]
+}
+
+model Student {
+  id            String   @id @default(cuid())
+  firstName     String
+  lastName      String
+  birthdate     DateTime
+  guardianName  String
+  guardianPhone String
+  guardianEmail String
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id])
+  enrolledAt    DateTime @default(now())
+  status        String   @default("active")
+
+  leagueEnrollments LeagueEnrollment[]
+  gameAttendances   GameAttendance[]
+  payments          Payment[]
+  goals             Goal[]
+}
+
+model League {
+  id           String   @id @default(cuid())
+  name         String
+  year         Int
+  categoryId   String
+  category     Category @relation(fields: [categoryId], references: [id])
+  feeAmountUsd Float
+
+  enrollments LeagueEnrollment[]
+  games       Game[]
+}
+
+model LeagueEnrollment {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id])
+  leagueId   String
+  league     League   @relation(fields: [leagueId], references: [id])
+  enrolledAt DateTime @default(now())
+
+  @@unique([studentId, leagueId])
+}
+
+model Game {
+  id             String   @id @default(cuid())
+  leagueId       String?
+  league         League?  @relation(fields: [leagueId], references: [id])
+  date           DateTime
+  opponent       String
+  location       String
+  gameType       GameType
+  arbitrageFeeUsd Float
+  goalsFor       Int?
+  goalsAgainst   Int?
+
+  attendances GameAttendance[]
+  goals       Goal[]
+}
+
+model Goal {
+  id        String  @id @default(cuid())
+  gameId    String
+  game      Game    @relation(fields: [gameId], references: [id])
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+  minute    Int
+}
+
+model GameAttendance {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id])
+  gameId     String
+  game       Game     @relation(fields: [gameId], references: [id])
+  attended   Boolean
+  recordedBy String
+  recorder   User     @relation(fields: [recordedBy], references: [id])
+  recordedAt DateTime @default(now())
+
+  @@unique([studentId, gameId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  studentId       String
+  student         Student       @relation(fields: [studentId], references: [id])
+  amountUsd       Float
+  amountOriginal  Float
+  currency        Currency
+  exchangeRate    Float
+  rateSource      String
+  paymentDate     DateTime
+  paymentMethod   PaymentMethod
+  paymentType     PaymentType
+  referenceId     String?
+  referenceNumber String?
+  recordedBy      String
+  recorder        User          @relation(fields: [recordedBy], references: [id])
+  notes           String?
+  createdAt       DateTime      @default(now())
+}
+
+model ExpenseCategory {
+  id       String    @id @default(cuid())
+  name     String
+  expenses Expense[]
+}
+
+model Expense {
+  id             String          @id @default(cuid())
+  categoryId     String
+  category       ExpenseCategory @relation(fields: [categoryId], references: [id])
+  description    String
+  amountUsd      Float
+  amountOriginal Float
+  currency       Currency
+  exchangeRate   Float
+  date           DateTime
+  payee          String
+  recordedBy     String
+  recorder       User            @relation(fields: [recordedBy], references: [id])
+  notes          String?
+  createdAt      DateTime        @default(now())
+}
+
+model InstructorPayment {
+  id             String   @id @default(cuid())
+  instructorId   String
+  instructor     User     @relation("InstructorPayments", fields: [instructorId], references: [id])
+  amountUsd      Float
+  amountOriginal Float
+  currency       Currency
+  exchangeRate   Float
+  periodStart    DateTime
+  periodEnd      DateTime
+  paymentDate    DateTime
+  recordedBy     String
+  recorder       User     @relation("RecordedByUser", fields: [recordedBy], references: [id])
+  notes          String?
+  createdAt      DateTime @default(now())
+}
+
+model Settings {
+  id                String   @id @default("default")
+  monthlyFeeUsd     Float    @default(50)
+  defaultCurrency   Currency @default(LOCAL)
+  localCurrencyCode String   @default("VES")
+}
