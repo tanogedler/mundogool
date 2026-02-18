@@ -1,182 +1,226 @@
 import { Router, Request, Response } from 'express';
-import { games, gameAttendances, leagues, students, categories } from '../data/sample';
-import { Game, GameAttendance } from '../types';
+import { prisma } from '../lib/prisma';
+import { GameType } from '@prisma/client';
 
 const router = Router();
 
 // GET all games
-router.get('/', (_req: Request, res: Response) => {
-  const enrichedGames = games.map((g) => {
-    const league = leagues.find((l) => l.id === g.leagueId);
-    const category = league ? categories.find((c) => c.id === league.categoryId) : null;
-    return {
-      ...g,
-      leagueName: league?.name || 'Unknown',
-      categoryName: category?.name || 'Unknown',
-    };
+router.get('/', async (_req: Request, res: Response) => {
+  const games = await prisma.game.findMany({
+    include: {
+      league: { include: { category: true } },
+      goals: { include: { student: true } },
+    },
+    orderBy: { date: 'desc' },
   });
-  res.json(enrichedGames);
+
+  const result = games.map((g) => ({
+    ...g,
+    leagueName: g.league?.name || null,
+    categoryName: g.league?.category.name || null,
+    date: g.date.toISOString().split('T')[0],
+    goals: g.goals.map((goal) => ({
+      id: goal.id,
+      studentId: goal.studentId,
+      studentName: `${goal.student.firstName} ${goal.student.lastName}`,
+      minute: goal.minute,
+    })),
+  }));
+
+  res.json(result);
 });
 
 // GET game by ID with attendance
-router.get('/:id', (req: Request, res: Response) => {
-  const game = games.find((g) => g.id === req.params.id);
+router.get('/:id', async (req: Request<{ id: string }>, res: Response) => {
+  const game = await prisma.game.findUnique({
+    where: { id: req.params.id },
+    include: {
+      league: { include: { category: true } },
+      attendances: { include: { student: true } },
+      goals: { include: { student: true } },
+    },
+  });
+
   if (!game) {
     res.status(404).json({ error: 'Game not found' });
     return;
   }
 
-  const attendances = gameAttendances
-    .filter((a) => a.gameId === game.id)
-    .map((a) => {
-      const student = students.find((s) => s.id === a.studentId);
-      return {
-        ...a,
-        studentName: student ? `${student.firstName} ${student.lastName}` : 'Unknown',
-      };
-    });
-
-  const league = leagues.find((l) => l.id === game.leagueId);
-
   res.json({
     ...game,
-    leagueName: league?.name || 'Unknown',
-    attendances,
+    leagueName: game.league?.name || null,
+    categoryName: game.league?.category.name || null,
+    date: game.date.toISOString().split('T')[0],
+    attendances: game.attendances.map((a) => ({
+      ...a,
+      studentName: `${a.student.firstName} ${a.student.lastName}`,
+      recordedAt: a.recordedAt.toISOString(),
+    })),
+    goals: game.goals.map((goal) => ({
+      id: goal.id,
+      studentId: goal.studentId,
+      studentName: `${goal.student.firstName} ${goal.student.lastName}`,
+      minute: goal.minute,
+    })),
   });
 });
 
 // POST create game
-router.post('/', (req: Request, res: Response) => {
-  const newGame: Game = {
-    id: `game-${Date.now()}`,
-    ...req.body,
-  };
-  games.push(newGame);
-  res.status(201).json(newGame);
+router.post('/', async (req: Request, res: Response) => {
+  const game = await prisma.game.create({
+    data: {
+      leagueId: req.body.leagueId || null,
+      date: new Date(req.body.date),
+      opponent: req.body.opponent,
+      location: req.body.location,
+      gameType: req.body.gameType as GameType,
+      arbitrageFeeUsd: req.body.arbitrageFeeUsd,
+      goalsFor: req.body.goalsFor,
+      goalsAgainst: req.body.goalsAgainst,
+    },
+    include: {
+      league: { include: { category: true } },
+    },
+  });
+
+  res.status(201).json({
+    ...game,
+    leagueName: game.league?.name || null,
+    categoryName: game.league?.category.name || null,
+    date: game.date.toISOString().split('T')[0],
+    goals: [],
+  });
 });
 
 // PUT update game
-router.put('/:id', (req: Request, res: Response) => {
-  const index = games.findIndex((g) => g.id === req.params.id);
-  if (index === -1) {
+router.put('/:id', async (req: Request<{ id: string }>, res: Response) => {
+  const { goals, ...gameData } = req.body;
+
+  // Update game
+  await prisma.game.update({
+    where: { id: req.params.id },
+    data: {
+      goalsFor: gameData.goalsFor,
+      goalsAgainst: gameData.goalsAgainst,
+    },
+  });
+
+  // Update goals - delete existing and create new
+  if (goals) {
+    await prisma.goal.deleteMany({ where: { gameId: req.params.id } });
+    if (goals.length > 0) {
+      await prisma.goal.createMany({
+        data: goals.map((g: { studentId: string; minute: number }) => ({
+          gameId: req.params.id,
+          studentId: g.studentId,
+          minute: g.minute,
+        })),
+      });
+    }
+  }
+
+  // Fetch updated game with goals
+  const updated = await prisma.game.findUnique({
+    where: { id: req.params.id },
+    include: {
+      league: { include: { category: true } },
+      goals: { include: { student: true } },
+    },
+  });
+
+  if (!updated) {
     res.status(404).json({ error: 'Game not found' });
     return;
   }
-  games[index] = { ...games[index], ...req.body };
-  res.json(games[index]);
+
+  res.json({
+    ...updated,
+    leagueName: updated.league?.name || null,
+    categoryName: updated.league?.category.name || null,
+    date: updated.date.toISOString().split('T')[0],
+    goals: updated.goals.map((goal) => ({
+      id: goal.id,
+      studentId: goal.studentId,
+      studentName: `${goal.student.firstName} ${goal.student.lastName}`,
+      minute: goal.minute,
+    })),
+  });
 });
 
-// GET eligible students for a game (based on league category)
-router.get('/:id/eligible-students', (req: Request, res: Response) => {
-  const game = games.find((g) => g.id === req.params.id);
+// GET eligible students for a game
+router.get('/:id/eligible-students', async (req: Request<{ id: string }>, res: Response) => {
+  const game = await prisma.game.findUnique({
+    where: { id: req.params.id },
+    include: { attendances: true },
+  });
+
   if (!game) {
     res.status(404).json({ error: 'Game not found' });
     return;
   }
 
-  const league = leagues.find((l) => l.id === game.leagueId);
-  if (!league) {
-    res.status(404).json({ error: 'League not found' });
-    return;
-  }
+  const students = await prisma.student.findMany({
+    where: { status: 'active' },
+    include: { category: true },
+  });
 
-  // Get students in the league's category (or adjacent for flexibility)
-  const eligibleStudents = students
-    .filter((s) => s.status === 'active')
-    .map((s) => {
-      const category = categories.find((c) => c.id === s.categoryId);
-      const attendance = gameAttendances.find((a) => a.gameId === game.id && a.studentId === s.id);
-      return {
-        ...s,
-        categoryName: category?.name || 'Unknown',
-        attended: attendance?.attended || false,
-        attendanceRecorded: !!attendance,
-      };
-    });
+  const result = students.map((s) => {
+    const attendance = game.attendances.find((a) => a.studentId === s.id);
+    return {
+      ...s,
+      categoryName: s.category.name,
+      birthdate: s.birthdate.toISOString().split('T')[0],
+      attended: attendance?.attended || false,
+      attendanceRecorded: !!attendance,
+    };
+  });
 
-  res.json(eligibleStudents);
+  res.json(result);
 });
 
-// POST/PUT record attendance for a game
-router.post('/:id/attendance', (req: Request, res: Response) => {
-  const game = games.find((g) => g.id === req.params.id);
-  if (!game) {
-    res.status(404).json({ error: 'Game not found' });
-    return;
-  }
-
+// POST record attendance
+router.post('/:id/attendance', async (req: Request<{ id: string }>, res: Response) => {
   const { studentId, attended, recordedBy } = req.body;
 
-  // Check if attendance already exists
-  const existingIndex = gameAttendances.findIndex(
-    (a) => a.gameId === game.id && a.studentId === studentId
-  );
-
-  if (existingIndex >= 0) {
-    // Update existing
-    gameAttendances[existingIndex] = {
-      ...gameAttendances[existingIndex],
-      attended,
-      recordedBy,
-      recordedAt: new Date().toISOString(),
-    };
-    res.json(gameAttendances[existingIndex]);
-  } else {
-    // Create new
-    const newAttendance: GameAttendance = {
-      id: `att-${Date.now()}`,
-      gameId: game.id,
+  const attendance = await prisma.gameAttendance.upsert({
+    where: {
+      studentId_gameId: { studentId, gameId: req.params.id },
+    },
+    update: { attended, recordedBy },
+    create: {
+      gameId: req.params.id,
       studentId,
       attended,
       recordedBy,
-      recordedAt: new Date().toISOString(),
-    };
-    gameAttendances.push(newAttendance);
-    res.status(201).json(newAttendance);
-  }
+    },
+  });
+
+  res.json(attendance);
 });
 
-// POST bulk attendance (for mobile-friendly batch updates)
-router.post('/:id/attendance/bulk', (req: Request, res: Response) => {
-  const game = games.find((g) => g.id === req.params.id);
-  if (!game) {
-    res.status(404).json({ error: 'Game not found' });
-    return;
-  }
-
+// POST bulk attendance
+router.post('/:id/attendance/bulk', async (req: Request<{ id: string }>, res: Response) => {
   const { attendances, recordedBy } = req.body as {
     attendances: Array<{ studentId: string; attended: boolean }>;
     recordedBy: string;
   };
 
-  const results: GameAttendance[] = [];
-
-  attendances.forEach(({ studentId, attended }) => {
-    const existingIndex = gameAttendances.findIndex(
-      (a) => a.gameId === game.id && a.studentId === studentId
-    );
-
-    if (existingIndex >= 0) {
-      gameAttendances[existingIndex] = {
-        ...gameAttendances[existingIndex],
-        attended,
-        recordedBy,
-        recordedAt: new Date().toISOString(),
-      };
-      results.push(gameAttendances[existingIndex]);
-    } else {
-      const newAttendance: GameAttendance = {
-        id: `att-${Date.now()}-${studentId}`,
-        gameId: game.id,
-        studentId,
-        attended,
-        recordedBy,
-        recordedAt: new Date().toISOString(),
-      };
-      gameAttendances.push(newAttendance);
-      results.push(newAttendance);
-    }
-  });
+  const results = await Promise.all(
+    attendances.map((a) =>
+      prisma.gameAttendance.upsert({
+        where: {
+          studentId_gameId: { studentId: a.studentId, gameId: req.params.id },
+        },
+        update: { attended: a.attended, recordedBy },
+        create: {
+          gameId: req.params.id,
+          studentId: a.studentId,
+          attended: a.attended,
+          recordedBy,
+        },
+      })
+    )
+  );
 
   res.json({ updated: results.length, attendances: results });
 });
