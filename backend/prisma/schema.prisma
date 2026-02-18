@@ -53,7 +53,7 @@ model User {
 
 model Category {
   id       String    @id @default(cuid())
-  name     String
+  name     String    @unique
   minAge   Int
   maxAge   Int
   students Student[]
@@ -163,7 +163,7 @@ model Payment {
 
 model ExpenseCategory {
   id       String    @id @default(cuid())
-  name     String
+  name     String    @unique
   expenses Expense[]
 }
 
