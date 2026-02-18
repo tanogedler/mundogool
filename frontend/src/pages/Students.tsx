@@ -118,7 +118,7 @@ export default function Students() {
           </table>
         </div>
         {filteredStudents.length === 0 && (
-          <div className="text-center py-8 text-slate-500">No students found</div>
+          <div className="text-center py-8 text-slate-500">No hay estudiantes inscritos</div>
         )}
       </div>
 
