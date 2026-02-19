@@ -177,7 +177,7 @@ function StudentDetailModal({
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-slate-500">Edad</span>
-              <p className="font-medium">{calculateAge(student.birthdate)} years</p>
+              <p className="font-medium">{calculateAge(student.birthdate)} años</p>
             </div>
             <div>
               <span className="text-slate-500">Categoría</span>
