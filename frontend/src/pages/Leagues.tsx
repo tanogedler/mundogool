@@ -328,13 +328,13 @@ const availableStudents = students.filter(
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium text-slate-800 flex items-center gap-2">
               <Users size={18} />
-              Enrolled Students ({league.enrollments?.length || 0})
+              Estudiantes Inscritos ({league.enrollments?.length || 0})
             </h3>
             <button
               onClick={() => setShowEnroll(!showEnroll)}
               className="text-sm text-blue-600 hover:text-blue-700"
             >
-              {showEnroll ? 'Cancel' : '+ Add Student'}
+              {showEnroll ? 'Cancelar' : '+ Agregar Estudiante'}
             </button>
           </div>
 
