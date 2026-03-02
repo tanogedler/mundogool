@@ -54,6 +54,10 @@ export const enrollInLeague = (leagueId: string, studentId: string) =>
   api.post(`/leagues/${leagueId}/enroll`, { studentId }).then((r) => r.data);
 export const unenrollFromLeague = (leagueId: string, studentId: string) =>
   api.delete(`/leagues/${leagueId}/enroll/${studentId}`).then((r) => r.data);
+export const updateLeague = (id: string, data: Partial<League>) =>
+  api.put<League>(`/leagues/${id}`, data).then((r) => r.data);
+export const deleteLeague = (id: string) =>
+  api.delete(`/leagues/${id}`).then((r) => r.data);
 
 // Games
 export const getGames = () => api.get<Game[]>('/games').then((r) => r.data);

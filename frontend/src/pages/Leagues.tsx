@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getLeagues, getCategories, getStudents, createLeague, enrollInLeague, unenrollFromLeague, getLeague } from '../api';
-import type { League, Category, Student } from '../types';
+import { getLeagues, getCategories, getStudents, createLeague, enrollInLeague, unenrollFromLeague, getLeague, updateLeague, deleteLeague } from '../api';import type { League, Category, Student } from '../types';
 import { Trophy, Plus, X, Users, ChevronRight } from 'lucide-react';
 
 export default function Leagues() {
@@ -105,14 +104,18 @@ export default function Leagues() {
       )}
 
       {selectedLeague && (
-        <LeagueDetailModal
-          leagueId={selectedLeague}
-          students={students}
-          onClose={() => setSelectedLeague(null)}
-          onUpdate={refreshLeagues}
-          formatCurrency={formatCurrency}
-        />
-      )}
+      <LeagueDetailModal
+        leagueId={selectedLeague}
+        students={students}
+        categories={categories}
+        onClose={() => setSelectedLeague(null)}
+        onUpdate={refreshLeagues}
+        onDelete={(id) => {
+        setLeagues(leagues.filter((l) => l.id !== id));
+        }}
+    formatCurrency={formatCurrency}
+      />
+  )}
     </div>
   );
 }
@@ -233,38 +236,70 @@ function AddLeagueModal({
 function LeagueDetailModal({
   leagueId,
   students,
+  categories,
   onClose,
   onUpdate,
+  onDelete,
   formatCurrency,
 }: {
   leagueId: string;
   students: Student[];
+  categories: Category[];
   onClose: () => void;
   onUpdate: () => void;
+  onDelete: (id: string) => void;
   formatCurrency: (n: number) => string;
 }) {
   const [league, setLeague] = useState<(League & { enrollments: Array<{ id: string; studentId: string; studentName: string; enrolledAt: string }> }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEnroll, setShowEnroll] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    year: new Date().getFullYear(),
+    categoryId: '',
+    feeAmountUsd: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-  const loadLeague = async () => {
-    setLoading(true);
+    const loadLeague = async () => {
+      setLoading(true);
+      const data = await getLeague(leagueId);
+      setLeague(data);
+      setEditForm({
+        name: data.name,
+        year: data.year,
+        categoryId: data.categoryId,
+        feeAmountUsd: data.feeAmountUsd.toString(),
+      });
+      setLoading(false);
+    };
+    loadLeague();
+  }, [leagueId]);
+
+  const refreshLeague = async () => {
     const data = await getLeague(leagueId);
     setLeague(data);
-    setLoading(false);
+    onUpdate();
   };
-  loadLeague();
-}, [leagueId]);
 
-const refreshLeague = async () => {
-  const data = await getLeague(leagueId);
-  setLeague(data);
-  onUpdate();
-};
+  if (loading || !league) {
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-800" />
+        </div>
+      </div>
+    );
+  }
 
-
+  const enrolledStudentIds = league.enrollments?.map((e) => e.studentId) || [];
+  const availableStudents = students.filter(
+    (s) => !enrolledStudentIds.includes(s.id) && s.categoryId === league.categoryId
+  );
 
   const handleEnroll = async (studentId: string) => {
     setEnrolling(true);
@@ -287,43 +322,141 @@ const refreshLeague = async () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl p-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-800" />
-        </div>
-      </div>
-    );
-  }
-  if (!league) {
-  return null;
-}
-const enrolledStudentIds = league?.enrollments?.map((e) => e.studentId) || [];
-const availableStudents = students.filter(
-  (s) => !enrolledStudentIds.includes(s.id) && s.categoryId === league.categoryId
-);
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    try {
+      await updateLeague(leagueId, {
+        name: editForm.name,
+        year: editForm.year,
+        categoryId: editForm.categoryId,
+        feeAmountUsd: parseFloat(editForm.feeAmountUsd),
+      });
+      await refreshLeague();
+      setIsEditing(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Are you sure you want to delete this league? This will also remove all enrollments.')) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteLeague(leagueId);
+      onDelete(leagueId);
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <div>
-            <h2 className="text-lg font-semibold">{league.name}</h2>
+            {isEditing ? (
+              <input
+                type="text"
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="text-lg font-semibold px-2 py-1 border border-slate-300 rounded"
+              />
+            ) : (
+              <h2 className="text-lg font-semibold">{league.name}</h2>
+            )}
             <p className="text-sm text-slate-500">{league.categoryName} • {league.year}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {!isEditing && (
+              <>
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                >
+                  {deleting ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              </>
+            )}
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="p-4">
-          <div className="bg-slate-50 rounded-lg p-4 mb-4">
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Costo de la Liga</span>
-              <span className="font-medium">{formatCurrency(league.feeAmountUsd)}</span>
+          {isEditing ? (
+            <div className="space-y-4 mb-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Año</label>
+                  <input
+                    type="number"
+                    value={editForm.year}
+                    onChange={(e) => setEditForm({ ...editForm, year: parseInt(e.target.value) })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Categoría</label>
+                  <select
+                    value={editForm.categoryId}
+                    onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Fee (USD)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.feeAmountUsd}
+                  onChange={(e) => setEditForm({ ...editForm, feeAmountUsd: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={saving}
+                  className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50"
+                >
+                  {saving ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-slate-50 rounded-lg p-4 mb-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Costo de Liga</span>
+                <span className="font-medium">{formatCurrency(league.feeAmountUsd)}</span>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium text-slate-800 flex items-center gap-2">
@@ -340,10 +473,10 @@ const availableStudents = students.filter(
 
           {showEnroll && (
             <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-slate-600 mb-2">Selecciona un estudiante para inscribir:</p>
+              <p className="text-sm text-slate-600 mb-2">Select student to enroll:</p>
               <div className="max-h-40 overflow-y-auto space-y-1">
                 {availableStudents.length === 0 ? (
-                  <p className="text-sm text-slate-500">Todos los estudiantes ya están inscritos</p>
+                  <p className="text-sm text-slate-500">No eligible students available</p>
                 ) : (
                   availableStudents.map((student) => (
                     <button
@@ -363,7 +496,7 @@ const availableStudents = students.filter(
 
           <div className="space-y-2">
             {league.enrollments?.length === 0 ? (
-              <p className="text-center py-4 text-slate-500">No hay estudiantes inscritos aún</p>
+              <p className="text-center py-4 text-slate-500">No students enrolled yet</p>
             ) : (
               league.enrollments?.map((enrollment) => (
                 <div
@@ -372,7 +505,7 @@ const availableStudents = students.filter(
                 >
                   <div>
                     <p className="font-medium text-slate-800">{enrollment.studentName}</p>
-                    <p className="text-xs text-slate-500">Inscrito: {enrollment.enrolledAt}</p>
+                    <p className="text-xs text-slate-500">Enrolled: {enrollment.enrolledAt}</p>
                   </div>
                   <button
                     onClick={() => handleUnenroll(enrollment.studentId)}

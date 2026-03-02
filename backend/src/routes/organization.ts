@@ -127,6 +127,48 @@ router.post('/leagues', async (req: Request, res: Response) => {
   });
 });
 
+// PUT update league
+router.put('/leagues/:id', async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const league = await prisma.league.update({
+      where: { id: req.params.id },
+      data: {
+        name: req.body.name,
+        year: req.body.year,
+        categoryId: req.body.categoryId,
+        feeAmountUsd: req.body.feeAmountUsd,
+      },
+      include: { category: true },
+    });
+
+    res.json({
+      ...league,
+      categoryName: league.category.name,
+    });
+  } catch (error) {
+    res.status(404).json({ error: 'League not found' });
+  }
+});
+
+// DELETE league
+router.delete('/leagues/:id', async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    // First delete related enrollments
+    await prisma.leagueEnrollment.deleteMany({
+      where: { leagueId: req.params.id },
+    });
+
+    // Then delete the league
+    await prisma.league.delete({
+      where: { id: req.params.id },
+    });
+
+    res.json({ message: 'League deleted' });
+  } catch (error) {
+    res.status(404).json({ error: 'League not found' });
+  }
+});
+
 // POST enroll student in league
 router.post('/leagues/:id/enroll', async (req: Request<{ id: string }>, res: Response) => {
   const { studentId } = req.body;
