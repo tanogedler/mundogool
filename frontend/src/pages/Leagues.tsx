@@ -496,7 +496,7 @@ function LeagueDetailModal({
 
           <div className="space-y-2">
             {league.enrollments?.length === 0 ? (
-              <p className="text-center py-4 text-slate-500">No students enrolled yet</p>
+              <p className="text-center py-4 text-slate-500">Ningún estudiante inscrito</p>
             ) : (
               league.enrollments?.map((enrollment) => (
                 <div
@@ -505,7 +505,7 @@ function LeagueDetailModal({
                 >
                   <div>
                     <p className="font-medium text-slate-800">{enrollment.studentName}</p>
-                    <p className="text-xs text-slate-500">Enrolled: {enrollment.enrolledAt}</p>
+                    <p className="text-xs text-slate-500">Inscrito: {enrollment.enrolledAt}</p>
                   </div>
                   <button
                     onClick={() => handleUnenroll(enrollment.studentId)}
