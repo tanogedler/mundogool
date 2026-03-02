@@ -127,13 +127,24 @@ router.put('/:id', async (req: Request<{ id: string }>, res: Response) => {
   });
 });
 
-// DELETE student (soft delete)
+// DELETE student (hard delete)
 router.delete('/:id', async (req: Request<{ id: string }>, res: Response) => {
-  const student = await prisma.student.update({
-    where: { id: req.params.id },
-    data: { status: 'inactive' },
-  });
-  res.json({ message: 'Student deactivated', student });
+  try {
+    // Delete related records first
+    await prisma.payment.deleteMany({ where: { studentId: req.params.id } });
+    await prisma.gameAttendance.deleteMany({ where: { studentId: req.params.id } });
+    await prisma.leagueEnrollment.deleteMany({ where: { studentId: req.params.id } });
+    await prisma.goal.deleteMany({ where: { studentId: req.params.id } });
+
+    // Then delete the student
+    await prisma.student.delete({
+      where: { id: req.params.id },
+    });
+
+    res.json({ message: 'Student deleted' });
+  } catch (error) {
+    res.status(404).json({ error: 'Student not found' });
+  }
 });
 
 export default router;

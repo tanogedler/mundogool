@@ -38,8 +38,8 @@ export const createStudent = (data: Omit<Student, 'id' | 'status' | 'enrolledAt'
   api.post<Student>('/students', data).then((r) => r.data);
 export const updateStudent = (id: string, data: Partial<Student>) =>
   api.put<Student>(`/students/${id}`, data).then((r) => r.data);
-export const deleteStudent = (id: string) => api.delete(`/students/${id}`).then((r) => r.data);
-
+export const deleteStudent = (id: string) =>
+  api.delete(`/students/${id}`).then((r) => r.data);
 // Categories
 export const getCategories = () => api.get<Category[]>('/categories').then((r) => r.data);
 export const getCategory = (id: string) => api.get<Category>(`/categories/${id}`).then((r) => r.data);
